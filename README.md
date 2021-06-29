@@ -1,329 +1,182 @@
-# Simple OAuth2
+# node-oauth2-server example
 
-[![NPM Package Version](https://img.shields.io/npm/v/simple-oauth2.svg?style=flat-square)](https://www.npmjs.com/package/simple-oauth2)
-[![Build Status](https://github.com/lelylan/simple-oauth2/workflows/Node.js%20CI/badge.svg)](https://github.com/lelylan/simple-oauth2/actions)
-[![Dependency Status](https://img.shields.io/david/lelylan/simple-oauth2.svg?style=flat-square)](https://david-dm.org/lelylan/simple-oauth2)
+This is a basic example of a OAuth2 server, using [node-oauth2-server](https://github.com/oauthjs/node-oauth2-server) (version 3.0.1) with the minimum (only the required to work) model configuration.
 
-[Simple OAuth2](#simple-oauth2) is a Node.js client library for the [OAuth 2.0](http://oauth.net/2/) authorization framework. [OAuth 2.0](http://oauth.net/2/) is the industry-standard protocol for authorization, enabling third-party applications to obtain limited access to an HTTP service, either on behalf of a resource owner or by allowing the third-party application to obtain access on its own behalf.
+If you want an example with a better data management system, you should go to [node-oauth2-server-mongo-example](https://github.com/pedroetb/node-oauth2-server-mongo-example) instead.
 
-## Table of Contents
+## Setup
 
-<!-- START doctoc generated TOC please keep comment here to allow auto update -->
-<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
-
-
-- [Simple OAuth2](#simple-oauth2)
-  - [Table of Contents](#table-of-contents)
-  - [Requirements](#requirements)
-  - [Usage](#usage)
-    - [Supported Grant Types](#supported-grant-types)
-      - [Authorization Code Grant](#authorization-code-grant)
-      - [Resource Owner Password Credentials Grant](#resource-owner-password-credentials-grant)
-      - [Client Credentials Grant](#client-credentials-grant)
-    - [Access Token](#access-token)
-      - [Refresh an access token](#refresh-an-access-token)
-      - [Revoke an access or refresh token](#revoke-an-access-or-refresh-token)
-    - [Errors](#errors)
-  - [Debugging the module](#debugging-the-module)
-  - [Contributing](#contributing)
-  - [Authors](#authors)
-    - [Contributors](#contributors)
-  - [Changelog](#changelog)
-  - [License](#license)
-  - [Thanks to Open Source](#thanks-to-open-source)
-
-<!-- END doctoc generated TOC please keep comment here to allow auto update -->
-
-## Requirements
-
-| Version                                                                          | Node support        |
-|----------------------------------------------------------------------------------|---------------------|
-| [3.x](https://github.com/lelylan/simple-oauth2/tree/3.x)                         | Node 8.x or higher  |
-| [4.x (Current)](https://github.com/lelylan/simple-oauth2/tree/master)            | Node 12.x or higher |
-
-Older node versions are unsupported.
+Install **nodejs** and **npm** and then, simply run `npm install` and `npm start`. The server should now be running at `http://localhost:3000`.
 
 ## Usage
 
-Install the client library using [npm](http://npmjs.org/):
+You can use different grant types to get an access token. By now, `password`, `client_credentials` and `refresh_token` are available.
 
-```bash
-npm install --save simple-oauth2
+### Checking example data
+
+#### With *password* grant
+
+There is one client added to server and ready to work:
+
+* **clientId**: `application`
+* **clientSecret**: `secret`
+
+And there is also one existing user:
+
+* **username**: `pedroetb`
+* **password**: `password`
+
+#### With *client_credentials* grant
+
+There is one confidential client added to server and ready to work:
+
+* **clientId**: `confidentialApplication`
+* **clientSecret**: `topSecret`
+
+You don't need any user to use this grant type, but for security is only available to confidential clients.
+
+#### With *refresh_token* grant
+
+There is one client added to server and ready to work:
+
+* **clientId**: `application`
+* **clientSecret**: `secret`
+
+You don't need any user to use this grant type, it was already provided when original token was obtained (by *password* grant type, for example).
+
+### Obtaining a token
+
+To obtain a token you should POST to `http://localhost:3000/oauth/token`.
+
+#### With *password* grant
+
+You need to include the client credentials in request headers and the user credentials and grant type in request body:
+
+* **Headers**
+	* **Authorization**: `"Basic " + clientId:clientSecret base64'd`
+		* (for example, to use `application:secret`, you should send `Basic YXBwbGljYXRpb246c2VjcmV0`)
+
+	* **Content-Type**: `application/x-www-form-urlencoded`
+* **Body**
+	* `grant_type=password&username=pedroetb&password=password`
+		* (contains 3 parameters: `grant_type`, `username` and `password`)
+
+For example, using `curl`:
+```
+curl http://localhost:3000/oauth/token \
+	-d "grant_type=password" \
+	-d "username=pedroetb" \
+	-d "password=password" \
+	-H "Authorization: Basic YXBwbGljYXRpb246c2VjcmV0" \
+	-H "Content-Type: application/x-www-form-urlencoded"
 ```
 
-With a minimal configuration, create an client instace of any supported [grant type](#supported-grant-types).
+If all goes as planned, you should receive a response like this:
 
-```javascript
-const config = {
-  client: {
-    id: '<client-id>',
-    secret: '<client-secret>'
-  },
-  auth: {
-    tokenHost: 'https://api.oauth.com'
-  }
-};
-
-const { ClientCredentials, ResourceOwnerPassword, AuthorizationCode } = require('simple-oauth2');
 ```
-
-For a complete reference of configuration options, see the [API Options](./API.md#options)
-
-### Supported Grant Types
-
-Depending on your use-case, any of the following supported grant types may be useful:
-
-#### Authorization Code Grant
-
-The [Authorization Code](https://oauth.net/2/grant-types/authorization-code/) grant type is used by confidential and public clients to exchange an authorization code for an access token. After the user returns to the client via the redirect URL, the application will get the authorization code from the URL and use it to request an access token.
-
-```javascript
-async function run() {
-  const client = new AuthorizationCode(config);
-
-  const authorizationUri = client.authorizeURL({
-    redirect_uri: 'http://localhost:3000/callback',
-    scope: '<scope>',
-    state: '<state>'
-  });
-
-  // Redirect example using Express (see http://expressjs.com/api.html#res.redirect)
-  res.redirect(authorizationUri);
-
-  const tokenParams = {
-    code: '<code>',
-    redirect_uri: 'http://localhost:3000/callback',
-    scope: '<scope>',
-  };
-
-  try {
-    const accessToken = await client.getToken(tokenParams);
-  } catch (error) {
-    console.log('Access Token Error', error.message);
-  }
+{
+	"accessToken": "951d6f603c2ce322c5def00ce58952ed2d096a72",
+	"accessTokenExpiresAt": "2018-11-18T16:18:25.852Z",
+	"refreshToken": "67c8300ad53efa493c2278acf12d92bdb71832f9",
+	"refreshTokenExpiresAt": "2018-12-02T15:18:25.852Z",
+	"client": {
+		"id": "application"
+	},
+	"user": {
+		"id": "pedroetb"
+	}
 }
-
-run();
 ```
 
-See the [API reference](./API.md#new-authorizationcodeoptions) for a complete reference of available options or any of our available examples at the [example folder](./example).
+#### With *client_credentials* grant
 
-#### Resource Owner Password Credentials Grant
+You need to include the client credentials in request headers and the grant type in request body:
 
-The [Resource Owner Password Credentials](https://oauth.net/2/grant-types/password/) grant type is a way to exchange a user's credentials for an access token. Because the client application has to collect the user's password and send it to the authorization server, it is not recommended that this grant be used at all anymore.
+* **Headers**
+	* **Authorization**: `"Basic " + clientId:clientSecret base64'd`
+		* (for example, to use `confidentialApplication:topSecret`, you should send `Basic Y29uZmlkZW50aWFsQXBwbGljYXRpb246dG9wU2VjcmV0`)
 
-```javascript
-async function run() {
-  const client = new ResourceOwnerPassword(config);
+	* **Content-Type**: `application/x-www-form-urlencoded`
+* **Body**
+	* `grant_type=client_credentials`
 
-  const tokenParams = {
-    username: 'username',
-    password: 'password',
-    scope: '<scope>',
-  };
+For example, using `curl`:
+```
+curl http://localhost:3000/oauth/token \
+	-d "grant_type=client_credentials" \
+	-H "Authorization: Basic Y29uZmlkZW50aWFsQXBwbGljYXRpb246dG9wU2VjcmV0" \
+	-H "Content-Type: application/x-www-form-urlencoded"
+```
 
-  try {
-    const accessToken = await client.getToken(tokenParams);
-  } catch (error) {
-    console.log('Access Token Error', error.message);
-  }
+If all goes as planned, you should receive a response like this:
+
+```
+{
+	"accessToken": "951d6f603c2ce322c5def00ce58952ed2d096a72",
+	"accessTokenExpiresAt": "2018-11-18T16:18:25.852Z",
+	"client": {
+		"id": "confidentialApplication"
+	},
+	"user": {
+		"id": "confidentialApplication"
+	}
 }
-
-run();
 ```
 
-See the [API reference](./API.md#new-resourceownerpasswordoptions) for a complete reference of available options.
+#### With *refresh_token* grant
 
-#### Client Credentials Grant
+When obtaining an access token using *password* grant, you get also a refresh token.
+With this token you can get a new access token, using only that value (username and password are not needed), while it has not been expired.
 
-The [Client Credentials](https://oauth.net/2/grant-types/client-credentials/) grant type is used by clients to obtain an access token outside of the context of a user. This is typically used by clients to access resources about themselves rather than to access a user's resources.
+> Remember that, if you refresh a token while it was still valid, the old access and refresh tokens get revoked, and only the new access and refresh tokens are valid to be used.
 
-```javascript
-async function run() {
-  const client = new ClientCredentials(config);
+You need to include the client credentials in request headers and the refresh token and grant type in request body:
 
-  const tokenParams = {
-    scope: '<scope>',
-  };
+* **Headers**
+	* **Authorization**: `"Basic " + clientId:clientSecret base64'd`
+		* (for example, to use `application:secret`, you should send `Basic YXBwbGljYXRpb246c2VjcmV0`)
 
-  try {
-    const accessToken = await client.getToken(tokenParams);
-  } catch (error) {
-    console.log('Access Token error', error.message);
-  }
+	* **Content-Type**: `application/x-www-form-urlencoded`
+* **Body**
+	* `grant_type=refresh_token&refresh_token=67c8300ad53efa493c2278acf12d92bdb71832f9`
+		* (contains 2 parameters: `grant_type` and `refresh_token`)
+
+For example, using `curl`:
+```
+curl http://localhost:3000/oauth/token \
+	-d "grant_type=refresh_token" \
+	-d "refresh_token=67c8300ad53efa493c2278acf12d92bdb71832f9" \
+	-H "Authorization: Basic YXBwbGljYXRpb246c2VjcmV0" \
+	-H "Content-Type: application/x-www-form-urlencoded"
+```
+
+If all goes as planned, you should receive a response like this:
+
+```
+{
+	"accessToken": "17be4ee45b177651db3fd9d286042de75d48eb3b",
+	"accessTokenExpiresAt": "2018-11-18T16:18:35.248Z",
+	"refreshToken": "37eaff895c8fc9fc839c0098cf3fb01858097908",
+	"refreshTokenExpiresAt": "2018-12-02T15:18:35.248Z",
+	"client": {
+		"id": "application"
+	},
+	"user": {
+		"id": "pedroetb"
+	}
 }
-
-run();
 ```
 
-See the [API reference](./API.md#new-clientcredentialsoptions) for a complete reference of available options.
+### Using the token
 
-### Access Token
+Now, you can use your brand-new token to access restricted areas. For example, you can GET to `http://localhost:3000/` including your token at headers:
 
-On completion of any [supported grant type](#supported-grant-types) an access token will be obtained. A list of supported operations can be found below.
+* **Headers**
+	* **Authorization**: `"Bearer " + accessToken`
+		* (for example, `Bearer 951d6f603c2ce322c5def00ce58952ed2d096a72`)
 
-#### Refresh an access token
-
-On long lived applications, it is often necessary to refresh access tokens. In such scenarios the access token is usually persisted in an external database by first serializing it.
-
-
-```javascript
-async function run() {
-  const accessTokenJSONString = JSON.stringify(accessToken);
-
-  await persistAccessTokenJSON(accessTokenJSONString);
-}
-
-run();
+For example, using `curl`:
 ```
-
-By the time we need to refresh the persistent access token, we can get back an [AccessToken](./API.md#accesstoken) instance by using the client's [.createToken](./API.md#createtokentoken--accesstoken) method.
-
-```javascript
-async function run() {
-  const accessTokenJSONString = await getPersistedAccessTokenJSON();
-
-  let accessToken = client.createToken(JSON.parse(accessTokenJSONString));
-}
-
-run();
+curl http://localhost:3000 \
+	-H "Authorization: Bearer 951d6f603c2ce322c5def00ce58952ed2d096a72"
 ```
-
-Once we have determined the access token needs refreshing with the [.expired()](./API.md#expiredexpirationwindowseconds--boolean) method, we can finally refresh it with a [.refresh()](./API.md#await-refreshparams--accesstoken) method call.
-
-```javascript
-async function run() {
-  if (accessToken.expired()) {
-    try {
-      const refreshParams = {
-        scope: '<scope>',
-      };
-
-      accessToken = await accessToken.refresh(refreshParams);
-    } catch (error) {
-      console.log('Error refreshing access token: ', error.message);
-    }
-  }
-}
-
-run();
-```
-
-The [.expired()](./API.md##expiredexpirationwindowseconds--boolean) helper is useful for knowing when a token has definitively expired. However, there is a common race condition when tokens are near expiring. If an OAuth 2.0 token is issued with a `expires_in` property (as opposed to an `expires_at` property), there can be discrepancies between the time the OAuth 2.0 server issues the access token and when it is received.
-
-These come down to factors such as network and processing latency and can be worked around by preemptively refreshing the access token:
-
-```javascript
-async function run() {
-  const EXPIRATION_WINDOW_IN_SECONDS = 300; // Window of time before the actual expiration to refresh the token
-
-  if (accessToken.expired(EXPIRATION_WINDOW_IN_SECONDS)) {
-    try {
-      accessToken = await accessToken.refresh();
-    } catch (error) {
-      console.log('Error refreshing access token: ', error.message);
-    }
-  }
-}
-
-run();
-```
-
-**Warning:** Tokens obtained with the Client Credentials grant may not be refreshed. Fetch a new token when it's expired.
-
-See the [API reference](./API.md#accesstoken) for a complete reference of available options.
-
-#### Revoke an access or refresh token
-
-When you've done with the token or you want to log out, you can revoke both access and refresh tokens.
-
-```javascript
-async function run() {
-  try {
-    await accessToken.revoke('access_token');
-    await accessToken.revoke('refresh_token');
-  } catch (error) {
-    console.log('Error revoking token: ', error.message);
-  }
-}
-
-run();
-```
-
-As a convenience method, you can also revoke both tokens in a single call:
-
-```javascript
-async function run() {
-  try {
-    // Revokes both tokens, refresh token is only revoked if the access_token is properly revoked
-    await accessToken.revokeAll();
-  } catch (error) {
-    console.log('Error revoking token: ', error.message);
-  }
-}
-
-run();
-```
-
-See the [API reference](./API.md#accesstoken) for a complete reference of available options.
-
-### Errors
-
-Whenever a client or server error is produced, a [boom](https://github.com/hapijs/boom) error is thrown by the library. As such any [boom error property](https://hapi.dev/module/boom/api) is available, but the exact information may vary according to the type of error.
-
-```javascript
-async function run() {
-  const client = new ClientCredentials(config);
-
-  try {
-    await client.getToken();
-  } catch(error) {
-    console.log(error.output);
-  }
-}
-
-run();
-
-// { statusCode: 401,
-//   payload:
-//    { statusCode: 401,
-//      error: 'Unauthorized',
-//      message: 'Response Error: 401 Unauthorized' },
-//   headers: {} }
-```
-
-## Debugging the module
-This module uses the [debug](https://github.com/visionmedia/debug) module to help on error diagnosis. Use the following environment variable to help in your debug journey:
-
-```
-DEBUG=*simple-oauth2*
-```
-
-## Contributing
-
-See [CONTRIBUTING](./CONTRIBUTING.md)
-
-## Authors
-
-[Andrea Reginato](http://twitter.com/lelylan)
-
-### Contributors
-
-Special thanks to the following people for submitting patches.
-
-* [Jonathan Samines](https://github.com/jonathansamines)
-
-## Changelog
-
-See [CHANGELOG](./CHANGELOG.md)
-
-## License
-
-Simple OAuth 2.0 is licensed under the [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0)
-
-## Thanks to Open Source
-
-Simple OAuth 2.0 come to life thanks to the work I've made in Lelylan, an open source microservices architecture for the Internet of Things. If this project helped you in any way, think about giving us a <a href="https://github.com/lelylan/lelylan">star on Github</a>.
-
-<a href="https://github.com/lelylan/lelylan">
-<img src="https://raw.githubusercontent.com/lelylan/lelylan/master/public/logo-lelylan.png" data-canonical-src="https://raw.githubusercontent.com/lelylan/lelylan/master/public/logo-lelylan.png" width="300"/></a>
